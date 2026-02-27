@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8">
+    <title>跨平台文件管理器</title>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="tip.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: system-ui;
+        }
+
+        body {
+            margin: 20px;
+            background: #f5f5f5;
+        }
+
+        .path-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        input {
+            flex: 1;
+            padding: 8px;
+        }
+
+        button {
+            padding: 8px 12px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background: #f0f0f0;
+        }
+
+        .danger {
+            background: #ffebee;
+            color: #b71c1c;
+            padding: 8px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+
+        .crumb {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+
+        .crumb span {
+            background: #fff;
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .list {
+            background: #fff;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid #eee;
+        }
+
+        .file-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .file-table th {
+            background: #f5f5f5;
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .file-table th:hover {
+            background: #e8e8e8;
+        }
+
+        .sort-icon {
+            margin-left: 5px;
+            font-size: 10px;
+        }
+
+        .file-table td {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            vertical-align: middle;
+        }
+
+        .file-table tr:hover {
+            background: #f9f9f9;
+        }
+
+        .item-checkbox {
+            margin-right: 10px;
+        }
+
+        .item-name {
+            flex: 1;
+        }
+
+        .item-size {
+            min-width: 100px;
+            text-align: right;
+        }
+
+        .item-actions {
+            display: flex;
+            gap: 8px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .file-table tr:hover .item-actions {
+            opacity: 1;
+        }
+
+        .action-btn {
+            position: relative;
+            padding: 6px;
+            font-size: 16px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .action-btn:hover {
+            background: #f0f0f0;
+        }
+
+        .action-btn:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            z-index: 1000;
+            margin-bottom: 5px;
+        }
+
+        .size-calculator {
+            font-size: 12px;
+            color: #666;
+            cursor: pointer;
+        }
+
+        .size-calculator:hover {
+            color: #333;
+        }
+
+        .editor {
+            margin-top: 20px;
+            background: #fff;
+            padding: 10px;
+            border-radius: 6px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 200px;
+            margin-top: 10px;
+        }
+
+        .tools {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+
+        .prompt-box {
+            position: fixed;
+            right: 20px;
+            padding: 12px 20px;
+            background: #4caf50;
+            color: white;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+            z-index: 10000;
+        }
+
+        .prompt-box.error {
+            background: #f44336;
+        }
+
+        .prompt-box.show {
+            transform: translateX(0);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="danger" id="dangerTip" style="display:none;">⚠️ 当前为危险目录，操作需谨慎！</div>
+
+    <div class="path-bar">
+        <input id="pathInput" placeholder="输入路径（例如 D:\test 或 /home/test）">
+        <button onclick="loadDir()">进入</button>
+    </div>
+
+    <div class="crumb" id="crumb"></div>
+
+    <div class="tools">
+        <button onclick="createFile()"><i class="fa fa-file-o"></i> 新建文件</button>
+        <button onclick="createDir()"><i class="fa fa-folder-o"></i> 新建文件夹</button>
+        <button onclick="paste()"><i class="fa fa-paste"></i> 粘贴</button>
+        <button onclick="uploadShow()"><i class="fa fa-upload"></i> 上传文件</button>
+        <label style="display: flex; align-items: center; gap: 5px; padding: 8px;">
+            <input type="checkbox" id="showHiddenCheckbox" onchange="toggleHiddenFiles()">
+            显示隐藏文件
+        </label>
+        <input type="file" id="fileInput" style="display:none;" onchange="upload()">
+    </div>
+
+    <div class="list" id="list"></div>
+
+    <div class="editor" id="editor" style="display:none;">
+        <div>
+            <button onclick="save()"><i class="fa fa-save"></i> 保存</button>
+            <button onclick="closeEditor()"><i class="fa fa-times"></i> 关闭</button>
+        </div>
+        <textarea id="editContent"></textarea>
+    </div>
+
+    <script>
+        let currentPath = "";
+        let editFile = "";
+        let isHexMode = false;
+        let selected = "";
+        let isSelDir = false;
+        let selectedFiles = [];
+        let folderSizes = {}; // 存储文件夹大小和sha256
+        let sortConfig = { field: 'name', order: 'asc' }; // 排序配置
+        let showHidden = false; // 是否显示隐藏文件
+
+        // 格式化文件大小
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // 排序文件列表
+        function sortFiles(items) {
+            return items.sort((a, b) => {
+                // 首先按类型排序，文件夹在前
+                if (a.isDir && !b.isDir) return -1;
+                if (!a.isDir && b.isDir) return 1;
+                
+                let aValue, bValue;
+                
+                switch (sortConfig.field) {
+                    case 'name':
+                        aValue = a.name.toLowerCase();
+                        bValue = b.name.toLowerCase();
+                        break;
+                    case 'size':
+                        aValue = a.size;
+                        bValue = b.size;
+                        break;
+                    case 'mtime':
+                        aValue = new Date(a.mtime).getTime();
+                        bValue = new Date(b.mtime).getTime();
+                        break;
+                    case 'ctime':
+                        aValue = new Date(a.ctime).getTime();
+                        bValue = new Date(b.ctime).getTime();
+                        break;
+                    case 'type':
+                        aValue = a.isDir ? 'folder' : a.name.split('.').pop().toLowerCase() || 'file';
+                        bValue = b.isDir ? 'folder' : b.name.split('.').pop().toLowerCase() || 'file';
+                        break;
+                    default:
+                        return 0;
+                }
+                
+                if (aValue < bValue) return sortConfig.order === 'asc' ? -1 : 1;
+                if (aValue > bValue) return sortConfig.order === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
+        // 全选/取消全选
+        function toggleSelectAll(checked) {
+            const checkboxes = document.querySelectorAll('.file-checkbox');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = checked;
+            });
+            updateSelectedFiles();
+        }
+
+        // 处理排序
+        function sortHandler(field) {
+            if (sortConfig.field === field) {
+                // 切换排序顺序
+                sortConfig.order = sortConfig.order === 'asc' ? 'desc' : 'asc';
+            } else {
+                // 新字段，默认升序
+                sortConfig.field = field;
+                sortConfig.order = 'asc';
+            }
+            // 重新加载目录以应用排序
+            loadDir(currentPath);
+        }
+
+        // 切换显示/隐藏隐藏文件
+        function toggleHiddenFiles() {
+            showHidden = document.getElementById('showHiddenCheckbox').checked;
+            // 重新加载目录以应用设置
+            loadDir(currentPath);
+        }
+
+        // 更新选中的文件
+        function updateSelectedFiles() {
+            selectedFiles = [];
+            const checkboxes = document.querySelectorAll('.file-checkbox:checked');
+            checkboxes.forEach(checkbox => {
+                selectedFiles.push(checkbox.dataset.path);
+            });
+        }
+
+        // 计算文件夹大小
+        async function calculateFolderSize(folderPath) {
+            try {
+                // 显示加载状态
+                const checkbox = document.querySelector(`[data-path="${folderPath}"]`);
+                if (!checkbox) {
+                    console.error("找不到对应的checkbox元素");
+                    return;
+                }
+                const row = checkbox.closest('tr');
+                const sizeElement = row.querySelector('.item-size');
+                if (!sizeElement) {
+                    console.error("找不到对应的size元素");
+                    return;
+                }
+                sizeElement.innerHTML = '<span style="color: #666;">计算中...</span>';
+
+                // 检查是否有缓存
+                if (folderSizes[folderPath]) {
+                    // 这里可以添加sha256检查逻辑，暂时简化处理
+                    sizeElement.innerHTML = formatFileSize(folderSizes[folderPath].size);
+                    return;
+                }
+
+                // 调用API计算大小
+                const r = await fetch("/api/file/get-size", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ path: folderPath })
+                });
+                const d = await r.json();
+                if (d.success) {
+                    // 存储结果
+                    folderSizes[folderPath] = {
+                        size: d.size,
+                        sha256: d.sha256 || ''
+                    };
+                    sizeElement.innerHTML = formatFileSize(d.size);
+                } else {
+                    sizeElement.innerHTML = '<span style="color: #f44336;">计算失败</span>';
+                }
+            } catch (e) {
+                console.error("计算文件夹大小失败:", e);
+                const checkbox = document.querySelector(`[data-path="${folderPath}"]`);
+                if (checkbox) {
+                    const row = checkbox.closest('tr');
+                    const sizeElement = row.querySelector('.item-size');
+                    if (sizeElement) {
+                        sizeElement.innerHTML = '<span style="color: #f44336;">计算失败</span>';
+                    }
+                }
+            }
+        }
+
+        // 加载目录
+        async function loadDir(path) {
+            currentPath = path || document.getElementById("pathInput").value || process.cwd();
+            try {
+                const r = await fetch("/api/file/list", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ path: currentPath, showHidden: showHidden })
+                });
+                const d = await r.json();
+                if (!d.success) {
+                    showPrompt("加载失败：" + d.msg, false);
+                    return;
+                }
+                // 更新页面
+                document.getElementById("dangerTip").style.display = d.danger ? "block" : "none";
+                document.getElementById("pathInput").value = d.current;
+                renderCrumb(d.crumbs);
+                // 应用排序
+                const sortedItems = sortFiles(d.items);
+                renderList(sortedItems);
+                // 保存路径到localStorage
+                savePathToStorage(d.current);
+                // 重置选中状态
+                selected = "";
+                isSelDir = false;
+            } catch (e) {
+                showPrompt("网络错误：" + e.message, false);
+            }
+        }
+
+        // 渲染面包屑
+        function renderCrumb(crumbs) {
+            const dom = crumbs.map(c => `<span onclick="loadDir('${c.path.replace(/\\/g, '\\\\')}')">${c.name}</span>`).join("");
+            document.getElementById("crumb").innerHTML = dom;
+        }
+
+        // 渲染文件列表
+        function renderList(items) {
+            let dom = "";
+            dom += `<table class="file-table">
+          <thead>
+            <tr>
+              <th style="width: 40px;"><input type="checkbox" id="selectAll" class="item-checkbox" onchange="toggleSelectAll(this.checked)"></th>
+              <th style="flex: 1;" onclick="sortHandler('name')">名称 <span class="sort-icon">${sortConfig.field === 'name' ? (sortConfig.order === 'asc' ? '↑' : '↓') : ''}</span></th>
+              <th style="width: 120px;" onclick="sortHandler('size')">大小 <span class="sort-icon">${sortConfig.field === 'size' ? (sortConfig.order === 'asc' ? '↑' : '↓') : ''}</span></th>
+              <th style="width: 150px;" onclick="sortHandler('ctime')">创建日期 <span class="sort-icon">${sortConfig.field === 'ctime' ? (sortConfig.order === 'asc' ? '↑' : '↓') : ''}</span></th>
+              <th style="width: 150px;" onclick="sortHandler('mtime')">修改日期 <span class="sort-icon">${sortConfig.field === 'mtime' ? (sortConfig.order === 'asc' ? '↑' : '↓') : ''}</span></th>
+              <th style="width: 100px;" onclick="sortHandler('type')">类型 <span class="sort-icon">${sortConfig.field === 'type' ? (sortConfig.order === 'asc' ? '↑' : '↓') : ''}</span></th>
+              <th style="width: 200px;">操作</th>
+            </tr>
+          </thead>
+          <tbody>`;
+            items.forEach(i => {
+                const type = i.isDir ? "📁" : "📄";
+                const pathEscaped = i.path.replace(/\\/g, '\\\\');
+                const sizeDisplay = i.isDir ? `<span class="size-calculator" onclick="calculateFolderSize('${pathEscaped}')">计算大小</span>` : formatFileSize(i.size || 0);
+                const ctime = i.ctime ? new Date(i.ctime).toLocaleString() : '未知';
+                const mtime = i.mtime ? new Date(i.mtime).toLocaleString() : '未知';
+                const fileType = i.isDir ? '文件夹' : i.name.split('.').pop() || '文件';
+                dom += `<tr>
+            <td><input type="checkbox" class="item-checkbox file-checkbox" data-path="${pathEscaped}" onchange="updateSelectedFiles()"></td>
+            <td onclick="select('${pathEscaped}','${i.isDir}')" style="cursor: pointer;">${type} ${i.name}</td>
+            <td class="item-size">${sizeDisplay}</td>
+            <td>${ctime}</td>
+            <td>${mtime}</td>
+            <td>${fileType}</td>
+            <td>
+              <div class="item-actions">
+                ${!i.isDir ? `<button class="action-btn" onclick="download('${pathEscaped}')" data-tooltip="下载"><i class="fa fa-download"></i></button>` : ""}
+                <button class="action-btn" onclick="copy('${pathEscaped}')" data-tooltip="复制"><i class="fa fa-copy"></i></button>
+                <button class="action-btn" onclick="cut('${pathEscaped}')" data-tooltip="剪切"><i class="fa fa-cut"></i></button>
+                <button class="action-btn" onclick="rename('${pathEscaped}')" data-tooltip="重命名"><i class="fa fa-pencil"></i></button>
+                <button class="action-btn" onclick="del('${pathEscaped}')" data-tooltip="删除"><i class="fa fa-trash"></i></button>
+                ${!i.isDir ? `<button class="action-btn" onclick="edit('${pathEscaped}')" data-tooltip="编辑（文本）"><i class="fa fa-file-text-o"></i></button>` : ""}
+                ${!i.isDir ? `<button class="action-btn" onclick="hex('${pathEscaped}')" data-tooltip="编辑（16进制）"><i class="fa fa-code"></i></button>` : ""}
+                ${!i.isDir && i.name.endsWith('.zip') ? `<button class="action-btn" onclick="extract('${pathEscaped}')" data-tooltip="解压"><i class="fa fa-unzip"></i></button>` : ""}
+                <button class="action-btn" onclick="compress('${pathEscaped}')" data-tooltip="压缩"><i class="fa fa-compress"></i></button>
+              </div>
+            </td>
+          </tr>`;
+            });
+            dom += `</tbody></table>`;
+            document.getElementById("list").innerHTML = dom;
+        }
+
+        // 选中文件/文件夹
+        function select(p, isDir) {
+            selected = p;
+            isSelDir = isDir;
+            // 点击文件夹自动进入
+            if (isDir) loadDir(p);
+        }
+
+        // 新建文件
+        async function createFile() {
+            if (!currentPath) return showPrompt("请先选择目录", false);
+            const name = prompt("请输入文件名（例如 test.txt）：");
+            if (!name) return;
+            try {
+                const r = await fetch("/api/file/create-file", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ dir: currentPath, name: name })
+                });
+                const d = await r.json();
+                if (d.danger) {
+                    showPrompt("创建失败：危险目录禁止操作", false);
+                } else if (d.success) {
+                    showPrompt("创建成功", true);
+                    loadDir(currentPath);
+                } else {
+                    showPrompt("创建失败：" + d.msg, false);
+                }
+            } catch (e) {
+                showPrompt("网络错误：" + e.message, false);
+            }
+        }
+
+        // 新建文件夹
+        async function createDir() {
+            if (!currentPath) return showPrompt("请先选择目录", false);
+            const name = prompt("请输入文件夹名：");
+            if (!name) return;
+            try {
+                const r = await fetch("/api/file/create-dir", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ dir: currentPath, name: name })
+                });
+                const d = await r.json();
+                if (d.danger) {
+                    showPrompt("创建失败：危险目录禁止操作", false);
+                } else if (d.success) {
+                    showPrompt("创建成功", true);
+                    loadDir(currentPath);
+                } else {
+                    showPrompt("创建失败：" + d.msg, false);
+                }
+            } catch (e) {
+                showPrompt("网络错误：" + e.message, false);
+            }
+        }
+
+        // 删除文件/文件夹
+        async function del(p) {
+            const target = p || selected;
+            if (!target) return showPrompt("请先选中要删除的文件/文件夹", false);
+            if (!confirm("确定要删除？此操作不可恢复！")) return;
+            try {
+                const r = await fetch("/api/file/delete", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ path: target })
+                });
+                const d = await r.json();
+                if (d.danger) {
+                    showPrompt("删除失败：危险目录禁止操作", false);
+                } else if (d.success) {
+                    showPrompt("删除成功", true);
+                    loadDir(currentPath);
+                } else {
+                    showPrompt("删除失败：" + d.msg, false);
+                }
+            } catch (e) {
+                showPrompt("网络错误：" + e.message, false);
+            }
+        }
+
+        // 重命名
+        async function rename(p) {
+            const target = p || selected;
+            if (!target) return showPrompt("请先选中要重命名的文件/文件夹", false);
+            const newName = prompt("请输入新名称：", path.basename(target));
+            if (!newName) return;
+            try {
+                const r = await fetch("/api/file/rename", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ oldPath: target, newName: newName })
+                });
+                const d = await r.json();
+                if (d.danger) {
+                    showPrompt("重命名失败：危险目录禁止操作", false);
+                } else if (d.success) {
+                    showPrompt("重命名成功", true);
+                    loadDir(currentPath);
+                } else {
+                    showPrompt("重命名失败：" + d.msg, false);
+                }
+            } catch (e) {
+                showPrompt("网络错误：" + e.message, false);
+            }
+        }
+
+        // 复制
+        async function copy(p) {
+            const target = p || selected;
+            if (!target) return showPrompt("请先选中要复制的文件/文件夹", false);
+            try {
+                const r = await fetch("/api/file/copy", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ path: target })
+                });
+                const d = await r.json();
+                if (d.success) {
+                    showPrompt("已复制到剪贴板", true);
+                } else {
+                    showPrompt("复制失败：" + d.msg, false);
+                }
+            } catch (e) {
+                showPrompt("网络错误：" + e.message, false);
+            }
+        }
+
+        // 剪切
+        async function cut(p) {
+            const target = p || selected;
+            if (!target) return showPrompt("请先选中要剪切的文件/文件夹", false);
+            try {
+                const r = await fetch("/api/file/cut", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ path: target })
+                });
+                const d = await r.json();
+                if (d.success) {
+                    showPrompt("已剪切到剪贴板", true);
+                } else {
+                    showPrompt("剪切失败：" + d.msg, false);
+                }
+            } catch (e) {
+                showPrompt("网络错误：" + e.message, false);
+            }
+        }
+
+        // 粘贴
+        async function paste() {
+            if (!currentPath) return showPrompt("请先选择目标目录", false);
+            try {
+                const r = await fetch("/api/file/paste", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ target: currentPath })
+                });
+                const d = await r.json();
+                if (d.danger) {
+                    showPrompt("粘贴失败：危险目录禁止操作", false);
+                } else if (d.success) {
+                    showPrompt("粘贴成功", true);
+                    loadDir(currentPath);
+                } else {
+                    showPrompt("粘贴失败：" + d.msg, false);
+                }
+            } catch (e) {
+                showPrompt("网络错误：" + e.message, false);
+            }
+        }
+
+        // 编辑文件（文本模式）
+        async function edit(p) {
+            const target = p || selected;
+            if (!target || isSelDir) return showPrompt("请选中一个文件（非文件夹）", false);
+            editFile = target;
+            isHexMode = false;
+            try {
+                const r = await fetch("/api/file/read", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ path: target })
+                });
+                const d = await r.json();
+                if (d.success) {
+                    document.getElementById("editContent").value = d.content;
+                    document.getElementById("editor").style.display = "block";
+                } else {
+                    showPrompt("读取文件失败：" + d.msg, false);
+                }
+            } catch (e) {
+                showPrompt("网络错误：" + e.message, false);
+            }
+        }
+
+        // 编辑文件（16进制模式）
+        async function hex(p) {
+            const target = p || selected;
+            if (!target || isSelDir) return showPrompt("请选中一个文件（非文件夹）", false);
+            editFile = target;
+            isHexMode = true;
+            try {
+                const r = await fetch("/api/file/read", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ path: target })
+                });
+                const d = await r.json();
+                if (d.success) {
+                    document.getElementById("editContent").value = d.hex;
+                    document.getElementById("editor").style.display = "block";
+                } else {
+                    showPrompt("读取文件失败：" + d.msg, false);
+                }
+            } catch (e) {
+                showPrompt("网络错误：" + e.message, false);
+            }
+        }
+
+        // 保存编辑的文件
+        async function save() {
+            if (!editFile) return showPrompt("无编辑的文件", false);
+            const content = document.getElementById("editContent").value;
+            try {
+                const r = await fetch("/api/file/save", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ path: editFile, content: content })
+                });
+                const d = await r.json();
+                if (d.danger) {
+                    showPrompt("保存失败：危险目录禁止操作", false);
+                } else if (d.success) {
+                    showPrompt("保存成功", true);
+                    closeEditor();
+                    loadDir(currentPath);
+                } else {
+                    showPrompt("保存失败：" + d.msg, false);
+                }
+            } catch (e) {
+                showPrompt("网络错误：" + e.message, false);
+            }
+        }
+
+        // 关闭编辑器
+        function closeEditor() {
+            document.getElementById("editor").style.display = "none";
+            editFile = "";
+        }
+
+        // 显示上传文件选择框
+        function uploadShow() {
+            if (!currentPath) return showPrompt("请先选择目标目录", false);
+            document.getElementById("fileInput").click();
+        }
+
+        // 上传文件
+        async function upload() {
+            const file = document.getElementById("fileInput").files[0];
+            if (!file) return;
+            try {
+                const fd = new FormData();
+                fd.append("file", file);
+                fd.append("target", currentPath);
+                const r = await fetch("/api/file/upload", {
+                    method: "POST",
+                    body: fd
+                });
+                const d = await r.json();
+                if (d.danger) {
+                    showPrompt("上传失败：危险目录禁止操作", false);
+                } else if (d.success) {
+                    showPrompt("上传成功", true);
+                    loadDir(currentPath);
+                } else {
+                    showPrompt("上传失败：" + d.msg, false);
+                }
+                // 清空文件选择框
+                document.getElementById("fileInput").value = "";
+            } catch (e) {
+                showPrompt("网络错误：" + e.message, false);
+            }
+        }
+
+        // 下载文件
+        function download(p) {
+            if (!p) return showPrompt("请选中要下载的文件", false);
+            try {
+                const encodedPath = encodeURIComponent(p);
+                window.open(`/api/file/download?path=${encodedPath}`);
+            } catch (e) {
+                showPrompt("下载失败：" + e.message, false);
+            }
+        }
+
+        // 压缩文件/文件夹
+        async function compress(p) {
+            const target = p || selected;
+            if (!target) return showPrompt("请选中要压缩的文件/文件夹", false);
+            const name = prompt("请输入压缩包名称（例如 test.zip）：", path.basename(target) + ".zip");
+            if (!name) return;
+            try {
+                const r = await fetch("/api/file/compress", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ source: target, name: name })
+                });
+                const d = await r.json();
+                if (d.danger) {
+                    showPrompt("压缩失败：危险目录禁止操作", false);
+                } else if (d.success) {
+                    showPrompt("压缩成功", true);
+                    loadDir(currentPath);
+                } else {
+                    showPrompt("压缩失败：" + d.msg, false);
+                }
+            } catch (e) {
+                showPrompt("网络错误：" + e.message, false);
+            }
+        }
+
+        // 解压文件
+        async function extract(p) {
+            const target = p || selected;
+            if (!target || !target.endsWith(".zip")) return showPrompt("请选中一个ZIP压缩包", false);
+            if (!confirm("确定要解压到当前目录吗？")) return;
+            try {
+                const r = await fetch("/api/file/extract", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ archive: target, target: currentPath })
+                });
+                const d = await r.json();
+                if (d.danger) {
+                    showPrompt("解压失败：危险目录禁止操作", false);
+                } else if (d.success) {
+                    showPrompt("解压成功", true);
+                    loadDir(currentPath);
+                } else {
+                    showPrompt("解压失败：" + d.msg, false);
+                }
+            } catch (e) {
+                showPrompt("网络错误：" + e.message, false);
+            }
+        }
+
+        // 检测操作系统类型
+        function getDefaultPath() {
+            const isWindows = navigator.platform.toLowerCase().includes('win');
+            return isWindows ? 'C:\\' : '/';
+        }
+
+        // 从URL参数获取路径
+        function getPathFromUrl() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('path');
+        }
+
+        // 保存路径到localStorage
+        function savePathToStorage(path) {
+            try {
+                localStorage.setItem('fileManagerPath', path);
+            } catch (e) {
+                console.error('保存路径到localStorage失败:', e);
+            }
+        }
+
+        // 从localStorage获取路径
+        function getPathFromStorage() {
+            try {
+                return localStorage.getItem('fileManagerPath');
+            } catch (e) {
+                console.error('从localStorage获取路径失败:', e);
+                return null;
+            }
+        }
+
+        // 初始化：加载路径
+        function init() {
+            // 优先从URL参数获取路径
+            const urlPath = getPathFromUrl();
+            if (urlPath) {
+                loadDir(decodeURIComponent(urlPath));
+            } else {
+                // 从localStorage获取路径
+                const storagePath = getPathFromStorage();
+                if (storagePath) {
+                    loadDir(storagePath);
+                } else {
+                    // 使用默认路径
+                    loadDir(getDefaultPath());
+                }
+            }
+        }
+
+        // 初始化
+        init();
+
+        // 简单的path工具函数（前端）
+        const path = {
+            basename: function (p) {
+                return p.split(/[\\/]/).pop();
+            }
+        };
+    </script>
+</body>
+
+</html>
